@@ -9,6 +9,7 @@ import (
 
 const (
 	restoreDir  = "RESTORE"
+	bassDir     = "BASS"
 	dirPattern  = "PTN_BANK%02d"
 	filePattern = "T8_BASS_PTN%02d_%02d.PRM"
 	headerTpl   = "LENGTH\t= %d\nTRIPLET\t= 0\n"
@@ -20,25 +21,27 @@ const (
 	SLIDE_OFF       = 0
 	ACCENT_ON       = 1
 	ACCENT_OFF      = 0
+	banks           = 4
+	patternsPerBank = 16
 	stepsPerPattern = 32 // Maximum number of steps in a pattern
 )
 
 func ToT8(b donner.Backup, startPos int) error {
 	// Ensure the RESTORE directory exists
-	if err := os.MkdirAll(restoreDir, 0755); err != nil {
+	if err := os.MkdirAll(filepath.Join(restoreDir, bassDir), 0755); err != nil {
 		return fmt.Errorf("failed to create restore directory: %w", err)
 	}
 
 	// Iterate through pattern banks (4 banks) and patterns (16 per bank)
-	for i := 0; i < 4; i++ {
-		dirPath := filepath.Join(restoreDir, fmt.Sprintf(dirPattern, i+1))
+	for i := 0; i < banks; i++ {
+		dirPath := filepath.Join(restoreDir, bassDir, fmt.Sprintf(dirPattern, i+1))
 		if err := os.MkdirAll(dirPath, 0755); err != nil {
 			return fmt.Errorf("failed to create bank directory: %w", err)
 		}
 
-		for j := 0; j < 16; j++ {
+		for j := 0; j < patternsPerBank; j++ {
 			// Check if the backup has enough patterns to process
-			backupIndex := i*16 + j + startPos
+			backupIndex := i*patternsPerBank + j + startPos
 			if backupIndex >= len(b) {
 				return nil
 			}
