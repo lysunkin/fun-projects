@@ -2,7 +2,7 @@ package jwt
 
 import (
 	"crypto/hmac"
-	"crypto/sha256"
+	"crypto/sha512"
 	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
@@ -140,6 +140,8 @@ func (j *JWT) Encode() (string, error) {
 func (j *JWT) generateSignature(data string) (string, error) {
 	signatureFuncs := map[string]func(string) (string, error){
 		HS256: j.hmacSHA256,
+		HS384: j.hmacSHA384,
+		HS512: j.hmacSHA512,
 		// Add more algorithms here
 	}
 
@@ -153,7 +155,21 @@ func (j *JWT) generateSignature(data string) (string, error) {
 
 // hmacSHA256 generates an HMAC SHA-256 signature
 func (j *JWT) hmacSHA256(data string) (string, error) {
-	h := hmac.New(sha256.New, []byte(j.secretKey))
+	h := hmac.New(sha512.New512_256, []byte(j.secretKey))
+	h.Write([]byte(data))
+	return base64UrlEncode(h.Sum(nil)), nil
+}
+
+// hmacSHA384 generates an HMAC SHA-384 signature
+func (j *JWT) hmacSHA384(data string) (string, error) {
+	h := hmac.New(sha512.New384, []byte(j.secretKey))
+	h.Write([]byte(data))
+	return base64UrlEncode(h.Sum(nil)), nil
+}
+
+// hmacSHA512 generates an HMAC SHA-512 signature
+func (j *JWT) hmacSHA512(data string) (string, error) {
+	h := hmac.New(sha512.New, []byte(j.secretKey))
 	h.Write([]byte(data))
 	return base64UrlEncode(h.Sum(nil)), nil
 }

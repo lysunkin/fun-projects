@@ -10,7 +10,7 @@ import (
 func main() {
 	// Example of creating an HS256 token
 	jwtHS256 := jwt.New(
-		jwt.WithAlgorithm("HS256"),
+		jwt.WithAlgorithm(jwt.HS256),
 		jwt.WithSecretKey("your-secret-key"),
 		jwt.WithExpiry(time.Hour),
 	)
