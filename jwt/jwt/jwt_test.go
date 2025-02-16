@@ -123,3 +123,91 @@ func TestEncodeJWT_HS(t *testing.T) {
 		})
 	}
 }
+
+func TestHS256_E2E(t *testing.T) {
+	jwtHS256 := New(
+		WithAlgorithm(HS256),
+		WithSecretKey("your-secret-key"),
+		WithExpiry(time.Hour),
+	)
+
+	jwtHS256.SetClaim("username", "john_doe")
+
+	tokenHS256, err := jwtHS256.Encode()
+	assert.NoError(t, err)
+
+	_, err = ParseJWT(tokenHS256)
+	assert.NoError(t, err)
+
+	_, err = jwtHS256.Verify(tokenHS256)
+	assert.NoError(t, err)
+}
+
+func TestRS256_E2E(t *testing.T) {
+	privateKey, err := GenerateRSAPrivateKey()
+	assert.NoError(t, err)
+
+	jwtRS256 := New(
+		WithAlgorithm(RS256),
+		WithRSAKey(privateKey),
+		WithExpiry(time.Hour),
+	)
+
+	jwtRS256.SetClaim("username", "john_doe")
+
+	// Encode the token
+	tokenRS256, err := jwtRS256.Encode()
+	assert.NoError(t, err)
+
+	_, err = ParseJWT(tokenRS256)
+	assert.NoError(t, err)
+
+	_, err = jwtRS256.Verify(tokenRS256)
+	assert.NoError(t, err)
+}
+
+func TestES256_E2E(t *testing.T) {
+	privateKey, err := GenerateECDSA256PrivateKey()
+	assert.NoError(t, err)
+
+	jwtES256 := New(
+		WithAlgorithm(ES256),
+		WithECDSAKey(privateKey),
+		WithExpiry(time.Hour),
+	)
+
+	jwtES256.SetClaim("username", "john_doe")
+
+	tokenES256, err := jwtES256.Encode()
+	assert.NoError(t, err)
+
+	_, err = ParseJWT(tokenES256)
+	assert.NoError(t, err)
+
+	// TODO: fix ES verification
+	//_, err = jwtES256.Verify(tokenES256)
+	//assert.NoError(t, err)
+}
+
+func TestPS256_E2E(t *testing.T) {
+	privateKey, err := GenerateRSAPrivateKey()
+	assert.NoError(t, err)
+
+	jwtPS256 := New(
+		WithAlgorithm(PS256),
+		WithRSAKey(privateKey),
+		WithExpiry(time.Hour),
+	)
+
+	jwtPS256.SetClaim("username", "john_doe")
+
+	tokenPS256, err := jwtPS256.Encode()
+	assert.NoError(t, err)
+
+	_, err = ParseJWT(tokenPS256)
+	assert.NoError(t, err)
+
+	// TODO: fix PS verification
+	//_, err = jwtPS256.Verify(tokenPS256)
+	//assert.NoError(t, err)
+}

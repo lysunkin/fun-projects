@@ -1,7 +1,12 @@
 package jwt
 
 import (
+	"crypto"
+	"crypto/ecdsa"
 	"crypto/hmac"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/sha256"
 	"crypto/sha512"
 	"crypto/subtle"
 	"encoding/base64"
@@ -36,12 +41,19 @@ const (
 	TypeValue = "JWT"
 )
 
+// Base64URLEncode encodes data to a URL-safe base64 string
+func Base64URLEncode(data []byte) string {
+	return base64.RawURLEncoding.EncodeToString(data)
+}
+
 // JWT struct for encoding JWT tokens
 type JWT struct {
-	secretKey string                 // Secret key for HMAC algorithms
-	Signature string                 // Signature part of the JWT token
-	Algorithm string                 // JWT algorithm (HS256, RS256, etc.)
-	Payload   map[string]interface{} // Claims to be encoded into the token
+	secretKey       string                 // Secret key for HMAC algorithms
+	Signature       string                 // Signature part of the JWT token
+	Algorithm       string                 // JWT algorithm (HS256, RS256, etc.)
+	Payload         map[string]interface{} // Claims to be encoded into the token
+	rsaPrivateKey   *rsa.PrivateKey        // private key for RSXXX, PSXXX algorithms
+	ecdsaPrivateKey *ecdsa.PrivateKey      // private key for ESXXX algorithms
 }
 
 type JWTOption func(*JWT)
@@ -67,6 +79,18 @@ func WithSecretKey(secretKey string) JWTOption {
 func WithClaims(claims map[string]interface{}) JWTOption {
 	return func(j *JWT) {
 		j.Payload = claims
+	}
+}
+
+func WithRSAKey(privateKey *rsa.PrivateKey) JWTOption {
+	return func(j *JWT) {
+		j.rsaPrivateKey = privateKey
+	}
+}
+
+func WithECDSAKey(privateKey *ecdsa.PrivateKey) JWTOption {
+	return func(j *JWT) {
+		j.ecdsaPrivateKey = privateKey
 	}
 }
 
@@ -97,11 +121,6 @@ func (j *JWT) SetClaim(key string, value interface{}) {
 	j.Payload[key] = value
 }
 
-// base64UrlEncode encodes data in Base64 URL format (no padding)
-func base64UrlEncode(data []byte) string {
-	return base64.RawURLEncoding.EncodeToString(data)
-}
-
 // Encode generates the JWT token as a string
 func (j *JWT) Encode() (string, error) {
 	// Set the standard claims
@@ -116,14 +135,14 @@ func (j *JWT) Encode() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	encodedHeader := base64UrlEncode(headerJSON)
+	encodedHeader := Base64URLEncode(headerJSON)
 
 	// Encode the payload (claims)
 	claimsJSON, err := json.Marshal(j.Payload)
 	if err != nil {
 		return "", err
 	}
-	encodedPayload := base64UrlEncode(claimsJSON)
+	encodedPayload := Base64URLEncode(claimsJSON)
 
 	// Generate the signature
 	dataToSign := fmt.Sprintf("%s.%s", encodedHeader, encodedPayload)
@@ -142,7 +161,15 @@ func (j *JWT) generateSignature(data string) (string, error) {
 		HS256: j.hmacSHA256,
 		HS384: j.hmacSHA384,
 		HS512: j.hmacSHA512,
-		// Add more algorithms here
+		RS256: j.RS256,
+		RS384: j.RS384,
+		RS512: j.RS512,
+		ES256: j.ES256,
+		ES384: j.ES384,
+		ES512: j.ES512,
+		PS256: j.PS256,
+		PS384: j.PS384,
+		PS512: j.PS512,
 	}
 
 	signFunc, ok := signatureFuncs[j.Algorithm]
@@ -157,21 +184,145 @@ func (j *JWT) generateSignature(data string) (string, error) {
 func (j *JWT) hmacSHA256(data string) (string, error) {
 	h := hmac.New(sha512.New512_256, []byte(j.secretKey))
 	h.Write([]byte(data))
-	return base64UrlEncode(h.Sum(nil)), nil
+	return Base64URLEncode(h.Sum(nil)), nil
 }
 
 // hmacSHA384 generates an HMAC SHA-384 signature
 func (j *JWT) hmacSHA384(data string) (string, error) {
 	h := hmac.New(sha512.New384, []byte(j.secretKey))
 	h.Write([]byte(data))
-	return base64UrlEncode(h.Sum(nil)), nil
+	return Base64URLEncode(h.Sum(nil)), nil
 }
 
 // hmacSHA512 generates an HMAC SHA-512 signature
 func (j *JWT) hmacSHA512(data string) (string, error) {
 	h := hmac.New(sha512.New, []byte(j.secretKey))
 	h.Write([]byte(data))
-	return base64UrlEncode(h.Sum(nil)), nil
+	return Base64URLEncode(h.Sum(nil)), nil
+}
+
+func (j *JWT) RS256(data string) (string, error) {
+	hasher := sha256.New()
+	hasher.Write([]byte(data))
+	hashed := hasher.Sum(nil)
+
+	signature, err := rsa.SignPKCS1v15(rand.Reader, j.rsaPrivateKey, crypto.SHA256, hashed)
+	if err != nil {
+		return "", err
+	}
+
+	return Base64URLEncode(signature), nil
+}
+
+func (j *JWT) RS384(data string) (string, error) {
+	hasher := sha512.New384()
+	hasher.Write([]byte(data))
+	hashed := hasher.Sum(nil)
+
+	signature, err := rsa.SignPKCS1v15(rand.Reader, j.rsaPrivateKey, crypto.SHA384, hashed)
+	if err != nil {
+		return "", err
+	}
+
+	return Base64URLEncode(signature), nil
+}
+
+func (j *JWT) RS512(data string) (string, error) {
+	hasher := sha512.New()
+	hasher.Write([]byte(data))
+	hashed := hasher.Sum(nil)
+
+	signature, err := rsa.SignPKCS1v15(rand.Reader, j.rsaPrivateKey, crypto.SHA512, hashed)
+	if err != nil {
+		return "", err
+	}
+
+	return Base64URLEncode(signature), nil
+}
+
+func (j *JWT) ES256(data string) (string, error) {
+	hasher := sha256.New()
+	hasher.Write([]byte(data))
+	hashed := hasher.Sum(nil)
+
+	r, s, err := ecdsa.Sign(rand.Reader, j.ecdsaPrivateKey, hashed)
+	if err != nil {
+		return "", err
+	}
+
+	signature := append(r.Bytes(), s.Bytes()...)
+	return Base64URLEncode(signature), nil
+}
+
+func (j *JWT) ES384(data string) (string, error) {
+	hasher := sha512.New384()
+	hasher.Write([]byte(data))
+	hashed := hasher.Sum(nil)
+
+	r, s, err := ecdsa.Sign(rand.Reader, j.ecdsaPrivateKey, hashed)
+	if err != nil {
+		return "", err
+	}
+
+	signature := append(r.Bytes(), s.Bytes()...)
+	return Base64URLEncode(signature), nil
+}
+
+func (j *JWT) ES512(data string) (string, error) {
+	hasher := sha512.New()
+	hasher.Write([]byte(data))
+	hashed := hasher.Sum(nil)
+
+	r, s, err := ecdsa.Sign(rand.Reader, j.ecdsaPrivateKey, hashed)
+	if err != nil {
+		return "", err
+	}
+
+	signature := append(r.Bytes(), s.Bytes()...)
+	return Base64URLEncode(signature), nil
+}
+
+func (j *JWT) PS256(data string) (string, error) {
+	hasher := sha256.New()
+	hasher.Write([]byte(data))
+	hashed := hasher.Sum(nil)
+
+	// Use rsa.SignPSS for PS256
+	signature, err := rsa.SignPSS(rand.Reader, j.rsaPrivateKey, crypto.SHA256, hashed, &rsa.PSSOptions{
+		SaltLength: rsa.PSSSaltLengthEqualsHash, // Use salt length equal to hash length
+	})
+	if err != nil {
+		return "", err
+	}
+	return Base64URLEncode(signature), nil
+}
+
+func (j *JWT) PS384(data string) (string, error) {
+	hasher := sha512.New384()
+	hasher.Write([]byte(data))
+	hashed := hasher.Sum(nil)
+
+	signature, err := rsa.SignPSS(rand.Reader, j.rsaPrivateKey, crypto.SHA384, hashed, &rsa.PSSOptions{
+		SaltLength: rsa.PSSSaltLengthEqualsHash, // Use salt length equal to hash length
+	})
+	if err != nil {
+		return "", err
+	}
+	return Base64URLEncode(signature), nil
+}
+
+func (j *JWT) PS512(data string) (string, error) {
+	hasher := sha512.New()
+	hasher.Write([]byte(data))
+	hashed := hasher.Sum(nil)
+
+	signature, err := rsa.SignPSS(rand.Reader, j.rsaPrivateKey, crypto.SHA512, hashed, &rsa.PSSOptions{
+		SaltLength: rsa.PSSSaltLengthEqualsHash, // Use salt length equal to hash length
+	})
+	if err != nil {
+		return "", err
+	}
+	return Base64URLEncode(signature), nil
 }
 
 // DecodeBase64Url decodes a Base64Url-encoded string (like the parts of a JWT)
