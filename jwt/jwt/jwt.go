@@ -12,6 +12,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"hash"
 	"strings"
 	"time"
 )
@@ -94,25 +95,19 @@ func WithECDSAKey(privateKey *ecdsa.PrivateKey) JWTOption {
 	}
 }
 
-// New now takes a slice of option as the rest arguments
+// New creates a new JWT instance with the provided options
 func New(opts ...JWTOption) *JWT {
-	const (
-		defaultAlgorithm = HS256
-	)
+	const defaultAlgorithm = HS256
 
 	j := &JWT{
 		Algorithm: defaultAlgorithm,
 		Payload:   make(map[string]interface{}),
 	}
 
-	// Loop through each option
 	for _, opt := range opts {
-		// Call the option giving the instantiated
-		// *JWT as the argument
 		opt(j)
 	}
 
-	// return the modified JWT instance
 	return j
 }
 
@@ -123,53 +118,48 @@ func (j *JWT) SetClaim(key string, value interface{}) {
 
 // Encode generates the JWT token as a string
 func (j *JWT) Encode() (string, error) {
-	// Set the standard claims
 	j.Payload[IssuedAtKey] = time.Now().Unix() // Issued at
 
-	// Encode the header (metadata)
 	header := map[string]string{
 		AlgorithmKey: j.Algorithm,
 		TypeKey:      TypeValue,
 	}
 	headerJSON, err := json.Marshal(header)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to marshal header: %w", err)
 	}
 	encodedHeader := Base64URLEncode(headerJSON)
 
-	// Encode the payload (claims)
 	claimsJSON, err := json.Marshal(j.Payload)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to marshal payload: %w", err)
 	}
 	encodedPayload := Base64URLEncode(claimsJSON)
 
-	// Generate the signature
 	dataToSign := fmt.Sprintf("%s.%s", encodedHeader, encodedPayload)
 	signature, err := j.generateSignature(dataToSign)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to generate signature: %w", err)
 	}
 
-	// Return the final JWT token
 	return fmt.Sprintf("%s.%s.%s", encodedHeader, encodedPayload, signature), nil
 }
 
 // generateSignature generates the signature for the given data based on the algorithm
 func (j *JWT) generateSignature(data string) (string, error) {
 	signatureFuncs := map[string]func(string) (string, error){
-		HS256: j.hmacSHA256,
-		HS384: j.hmacSHA384,
-		HS512: j.hmacSHA512,
-		RS256: j.RS256,
-		RS384: j.RS384,
-		RS512: j.RS512,
-		ES256: j.ES256,
-		ES384: j.ES384,
-		ES512: j.ES512,
-		PS256: j.PS256,
-		PS384: j.PS384,
-		PS512: j.PS512,
+		HS256: j.hmacSHA(sha256.New),
+		HS384: j.hmacSHA(sha512.New384),
+		HS512: j.hmacSHA(sha512.New),
+		RS256: j.rsaSign(crypto.SHA256, sha256.New),
+		RS384: j.rsaSign(crypto.SHA384, sha512.New384),
+		RS512: j.rsaSign(crypto.SHA512, sha512.New),
+		ES256: j.ecdsaSign(sha256.New),
+		ES384: j.ecdsaSign(sha512.New384),
+		ES512: j.ecdsaSign(sha512.New),
+		PS256: j.pssSign(crypto.SHA256, sha256.New),
+		PS384: j.pssSign(crypto.SHA384, sha512.New384),
+		PS512: j.pssSign(crypto.SHA512, sha512.New),
 	}
 
 	signFunc, ok := signatureFuncs[j.Algorithm]
@@ -180,155 +170,67 @@ func (j *JWT) generateSignature(data string) (string, error) {
 	return signFunc(data)
 }
 
-// hmacSHA256 generates an HMAC SHA-256 signature
-func (j *JWT) hmacSHA256(data string) (string, error) {
-	h := hmac.New(sha512.New512_256, []byte(j.secretKey))
-	h.Write([]byte(data))
-	return Base64URLEncode(h.Sum(nil)), nil
-}
-
-// hmacSHA384 generates an HMAC SHA-384 signature
-func (j *JWT) hmacSHA384(data string) (string, error) {
-	h := hmac.New(sha512.New384, []byte(j.secretKey))
-	h.Write([]byte(data))
-	return Base64URLEncode(h.Sum(nil)), nil
-}
-
-// hmacSHA512 generates an HMAC SHA-512 signature
-func (j *JWT) hmacSHA512(data string) (string, error) {
-	h := hmac.New(sha512.New, []byte(j.secretKey))
-	h.Write([]byte(data))
-	return Base64URLEncode(h.Sum(nil)), nil
-}
-
-func (j *JWT) RS256(data string) (string, error) {
-	hasher := sha256.New()
-	hasher.Write([]byte(data))
-	hashed := hasher.Sum(nil)
-
-	signature, err := rsa.SignPKCS1v15(rand.Reader, j.rsaPrivateKey, crypto.SHA256, hashed)
-	if err != nil {
-		return "", err
+// hmacSHA generates an HMAC signature using the provided hash function
+func (j *JWT) hmacSHA(hashFunc func() hash.Hash) func(string) (string, error) {
+	return func(data string) (string, error) {
+		h := hmac.New(hashFunc, []byte(j.secretKey))
+		h.Write([]byte(data))
+		return Base64URLEncode(h.Sum(nil)), nil
 	}
-
-	return Base64URLEncode(signature), nil
 }
 
-func (j *JWT) RS384(data string) (string, error) {
-	hasher := sha512.New384()
-	hasher.Write([]byte(data))
-	hashed := hasher.Sum(nil)
+// rsaSign generates an RSA signature using the provided hash function
+func (j *JWT) rsaSign(hash crypto.Hash, hashFunc func() hash.Hash) func(string) (string, error) {
+	return func(data string) (string, error) {
+		hasher := hashFunc()
+		hasher.Write([]byte(data))
+		hashed := hasher.Sum(nil)
 
-	signature, err := rsa.SignPKCS1v15(rand.Reader, j.rsaPrivateKey, crypto.SHA384, hashed)
-	if err != nil {
-		return "", err
+		signature, err := rsa.SignPKCS1v15(rand.Reader, j.rsaPrivateKey, hash, hashed)
+		if err != nil {
+			return "", fmt.Errorf("failed to sign data: %w", err)
+		}
+
+		return Base64URLEncode(signature), nil
 	}
-
-	return Base64URLEncode(signature), nil
 }
 
-func (j *JWT) RS512(data string) (string, error) {
-	hasher := sha512.New()
-	hasher.Write([]byte(data))
-	hashed := hasher.Sum(nil)
+// ecdsaSign generates an ECDSA signature using the provided hash function
+func (j *JWT) ecdsaSign(hashFunc func() hash.Hash) func(string) (string, error) {
+	return func(data string) (string, error) {
+		hasher := hashFunc()
+		hasher.Write([]byte(data))
+		hashed := hasher.Sum(nil)
 
-	signature, err := rsa.SignPKCS1v15(rand.Reader, j.rsaPrivateKey, crypto.SHA512, hashed)
-	if err != nil {
-		return "", err
+		r, s, err := ecdsa.Sign(rand.Reader, j.ecdsaPrivateKey, hashed)
+		if err != nil {
+			return "", fmt.Errorf("failed to sign data: %w", err)
+		}
+
+		signature := append(r.Bytes(), s.Bytes()...)
+		return Base64URLEncode(signature), nil
 	}
-
-	return Base64URLEncode(signature), nil
 }
 
-func (j *JWT) ES256(data string) (string, error) {
-	hasher := sha256.New()
-	hasher.Write([]byte(data))
-	hashed := hasher.Sum(nil)
+// pssSign generates an RSA-PSS signature using the provided hash function
+func (j *JWT) pssSign(hash crypto.Hash, hashFunc func() hash.Hash) func(string) (string, error) {
+	return func(data string) (string, error) {
+		hasher := hashFunc()
+		hasher.Write([]byte(data))
+		hashed := hasher.Sum(nil)
 
-	r, s, err := ecdsa.Sign(rand.Reader, j.ecdsaPrivateKey, hashed)
-	if err != nil {
-		return "", err
+		signature, err := rsa.SignPSS(rand.Reader, j.rsaPrivateKey, hash, hashed, &rsa.PSSOptions{
+			SaltLength: rsa.PSSSaltLengthEqualsHash,
+		})
+		if err != nil {
+			return "", fmt.Errorf("failed to sign data: %w", err)
+		}
+		return Base64URLEncode(signature), nil
 	}
-
-	signature := append(r.Bytes(), s.Bytes()...)
-	return Base64URLEncode(signature), nil
-}
-
-func (j *JWT) ES384(data string) (string, error) {
-	hasher := sha512.New384()
-	hasher.Write([]byte(data))
-	hashed := hasher.Sum(nil)
-
-	r, s, err := ecdsa.Sign(rand.Reader, j.ecdsaPrivateKey, hashed)
-	if err != nil {
-		return "", err
-	}
-
-	signature := append(r.Bytes(), s.Bytes()...)
-	return Base64URLEncode(signature), nil
-}
-
-func (j *JWT) ES512(data string) (string, error) {
-	hasher := sha512.New()
-	hasher.Write([]byte(data))
-	hashed := hasher.Sum(nil)
-
-	r, s, err := ecdsa.Sign(rand.Reader, j.ecdsaPrivateKey, hashed)
-	if err != nil {
-		return "", err
-	}
-
-	signature := append(r.Bytes(), s.Bytes()...)
-	return Base64URLEncode(signature), nil
-}
-
-func (j *JWT) PS256(data string) (string, error) {
-	hasher := sha256.New()
-	hasher.Write([]byte(data))
-	hashed := hasher.Sum(nil)
-
-	// Use rsa.SignPSS for PS256
-	signature, err := rsa.SignPSS(rand.Reader, j.rsaPrivateKey, crypto.SHA256, hashed, &rsa.PSSOptions{
-		SaltLength: rsa.PSSSaltLengthEqualsHash, // Use salt length equal to hash length
-	})
-	if err != nil {
-		return "", err
-	}
-	return Base64URLEncode(signature), nil
-}
-
-func (j *JWT) PS384(data string) (string, error) {
-	hasher := sha512.New384()
-	hasher.Write([]byte(data))
-	hashed := hasher.Sum(nil)
-
-	signature, err := rsa.SignPSS(rand.Reader, j.rsaPrivateKey, crypto.SHA384, hashed, &rsa.PSSOptions{
-		SaltLength: rsa.PSSSaltLengthEqualsHash, // Use salt length equal to hash length
-	})
-	if err != nil {
-		return "", err
-	}
-	return Base64URLEncode(signature), nil
-}
-
-func (j *JWT) PS512(data string) (string, error) {
-	hasher := sha512.New()
-	hasher.Write([]byte(data))
-	hashed := hasher.Sum(nil)
-
-	signature, err := rsa.SignPSS(rand.Reader, j.rsaPrivateKey, crypto.SHA512, hashed, &rsa.PSSOptions{
-		SaltLength: rsa.PSSSaltLengthEqualsHash, // Use salt length equal to hash length
-	})
-	if err != nil {
-		return "", err
-	}
-	return Base64URLEncode(signature), nil
 }
 
 // DecodeBase64Url decodes a Base64Url-encoded string (like the parts of a JWT)
 func DecodeBase64Url(base64Url string) ([]byte, error) {
-	// Base64Url replaces `+` and `/` with `-` and `_`, respectively.
-	// Add padding if needed
 	base64Url = strings.ReplaceAll(base64Url, "-", "+")
 	base64Url = strings.ReplaceAll(base64Url, "_", "/")
 	switch len(base64Url) % 4 {
@@ -348,26 +250,21 @@ func ParseJWT(token string) (*JWT, error) {
 		return nil, fmt.Errorf("invalid token format")
 	}
 
-	// Decode Header
 	headerBytes, err := DecodeBase64Url(parts[0])
 	if err != nil {
-		return nil, fmt.Errorf("error decoding header: %v", err)
+		return nil, fmt.Errorf("error decoding header: %w", err)
 	}
 
-	// Decode Payload
 	payloadBytes, err := DecodeBase64Url(parts[1])
 	if err != nil {
-		return nil, fmt.Errorf("error decoding payload: %v", err)
+		return nil, fmt.Errorf("error decoding payload: %w", err)
 	}
 
-	// Decode Signature (no need to decode to JSON)
 	signature := parts[2]
 
-	// Unmarshal JSON to struct for easier handling
 	var header map[string]interface{}
-	err = json.Unmarshal(headerBytes, &header)
-	if err != nil {
-		return nil, fmt.Errorf("error unmarshalling header: %v", err)
+	if err := json.Unmarshal(headerBytes, &header); err != nil {
+		return nil, fmt.Errorf("error unmarshalling header: %w", err)
 	}
 
 	typ, ok := header[TypeKey]
@@ -383,15 +280,14 @@ func ParseJWT(token string) (*JWT, error) {
 	}
 
 	var payload map[string]interface{}
-	err = json.Unmarshal(payloadBytes, &payload)
-	if err != nil {
-		return nil, fmt.Errorf("error unmarshalling payload: %v", err)
+	if err := json.Unmarshal(payloadBytes, &payload); err != nil {
+		return nil, fmt.Errorf("error unmarshalling payload: %w", err)
 	}
 
 	return &JWT{
 		Algorithm: alg.(string),
 		Payload:   payload,
-		Signature: string(signature),
+		Signature: signature,
 	}, nil
 }
 
@@ -407,7 +303,7 @@ func (j *JWT) Verify(token string) (bool, error) {
 
 	signature, err := j.generateSignature(dataToSign)
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("failed to generate signature: %w", err)
 	}
 
 	if subtle.ConstantTimeCompare([]byte(signature), []byte(expectedSignature)) == 1 {

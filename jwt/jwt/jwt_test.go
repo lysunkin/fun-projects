@@ -17,15 +17,12 @@ func TestParseJWT(t *testing.T) {
 		wantClaim map[string]interface{}
 	}{
 		{
-			name:    "Valid JWT",
-			token:   "eyJhbGciOiAiSFMyNTYiLCAidHlwIjogIkpXVCJ9.eyJzdWIiOiAiMTIzNDU2Nzg5MCIsICJuYW1lIjogIkpvaG4gRG9lIiwgImlhdCI6IDE1MTYyMzkwMjJ9.4f4d5c6e7f8g9h0i1j2k3l4m5n6o7p8q9r0s1t2u3v4w5x6y7z8a9b0c1d2e3f4g",
-			wantErr: false,
-			wantAlg: HS256,
-			wantClaim: map[string]interface{}{
-				"sub":  "1234567890",
-				"name": "John Doe",
-				"iat":  float64(1516239022),
-			},
+			name:      "Valid JWT",
+			token:     "eyJhbGciOiAiSFMyNTYiLCAidHlwIjogIkpXVCJ9.eyJzdWIiOiAiMTIzNDU2Nzg5MCIsICJuYW1lIjogIkpvaG4gRG9lIiwgImlhdCI6IDE1MTYyMzkwMjJ9.4f4d5c6e7f8g9h0i1j2k3l4m5n6o7p8q9r0s1t2u3v4w5x6y7z8a9b0c1d2e3f4g",
+			wantErr:   false,
+			wantAlg:   HS256,
+			wantTyp:   "",
+			wantClaim: map[string]interface{}{"sub": "1234567890", "name": "John Doe", "iat": float64(1516239022)},
 		},
 		{
 			name:    "Invalid JWT format",
@@ -144,7 +141,7 @@ func TestHS256_E2E(t *testing.T) {
 }
 
 func TestRS256_E2E(t *testing.T) {
-	privateKey, err := GenerateRSAPrivateKey()
+	privateKey, err := GenerateRSAPrivateKey(2048)
 	assert.NoError(t, err)
 
 	jwtRS256 := New(
@@ -190,7 +187,7 @@ func TestES256_E2E(t *testing.T) {
 }
 
 func TestPS256_E2E(t *testing.T) {
-	privateKey, err := GenerateRSAPrivateKey()
+	privateKey, err := GenerateRSAPrivateKey(2048)
 	assert.NoError(t, err)
 
 	jwtPS256 := New(

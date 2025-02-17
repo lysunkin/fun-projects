@@ -42,7 +42,7 @@ func main() {
 
 	//===
 
-	privateKey, err := jwt.GenerateRSAPrivateKey()
+	privateKey, err := jwt.GenerateRSAPrivateKey(2048)
 	if err != nil {
 		fmt.Println("Error generating private key:", err)
 		return

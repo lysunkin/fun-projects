@@ -7,16 +7,16 @@ import (
 	"crypto/rsa"
 )
 
-// GenerateRSAPrivateKey generates a new RSA private key
-func GenerateRSAPrivateKey() (*rsa.PrivateKey, error) {
-	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+// GenerateRSAPrivateKey generates a new RSA private key with a specified bit size.
+func GenerateRSAPrivateKey(bits int) (*rsa.PrivateKey, error) {
+	privateKey, err := rsa.GenerateKey(rand.Reader, bits)
 	if err != nil {
 		return nil, err
 	}
 	return privateKey, nil
 }
 
-// GenerateECDSAPrivateKey generates a new ECDSA private key
+// GenerateECDSAPrivateKey generates a new ECDSA private key with the specified elliptic curve.
 func GenerateECDSAPrivateKey(c elliptic.Curve) (*ecdsa.PrivateKey, error) {
 	privateKey, err := ecdsa.GenerateKey(c, rand.Reader)
 	if err != nil {
@@ -25,14 +25,17 @@ func GenerateECDSAPrivateKey(c elliptic.Curve) (*ecdsa.PrivateKey, error) {
 	return privateKey, nil
 }
 
+// GenerateECDSA256PrivateKey generates a new ECDSA private key using the P-256 curve.
 func GenerateECDSA256PrivateKey() (*ecdsa.PrivateKey, error) {
-	return GenerateECDSAPrivateKey(elliptic.P256()) // P-256 curve for ES256
+	return GenerateECDSAPrivateKey(elliptic.P256())
 }
 
+// GenerateECDSA384PrivateKey generates a new ECDSA private key using the P-384 curve.
 func GenerateECDSA384PrivateKey() (*ecdsa.PrivateKey, error) {
 	return GenerateECDSAPrivateKey(elliptic.P384())
 }
 
-func GenerateECDSA512PrivateKey() (*ecdsa.PrivateKey, error) {
+// GenerateECDSA521PrivateKey generates a new ECDSA private key using the P-521 curve.
+func GenerateECDSA521PrivateKey() (*ecdsa.PrivateKey, error) {
 	return GenerateECDSAPrivateKey(elliptic.P521())
 }
