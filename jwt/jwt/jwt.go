@@ -49,6 +49,13 @@ func Base64URLEncode(data []byte) string {
 	return base64.RawURLEncoding.EncodeToString(data)
 }
 
+// hashData hashes the given data using the provided hash function
+func hashData(data string, hashFunc func() hash.Hash) []byte {
+	hasher := hashFunc()
+	hasher.Write([]byte(data))
+	return hasher.Sum(nil)
+}
+
 // JWT struct for encoding JWT tokens
 type JWT struct {
 	secretKey       string                 // Secret key for HMAC algorithms
@@ -184,9 +191,7 @@ func (j *JWT) hmacSHA(hashFunc func() hash.Hash) func(string) (string, error) {
 // rsaSign generates an RSA signature using the provided hash function
 func (j *JWT) rsaSign(hash crypto.Hash, hashFunc func() hash.Hash) func(string) (string, error) {
 	return func(data string) (string, error) {
-		hasher := hashFunc()
-		hasher.Write([]byte(data))
-		hashed := hasher.Sum(nil)
+		hashed := hashData(data, hashFunc)
 
 		signature, err := rsa.SignPKCS1v15(rand.Reader, j.rsaPrivateKey, hash, hashed)
 		if err != nil {
@@ -200,9 +205,7 @@ func (j *JWT) rsaSign(hash crypto.Hash, hashFunc func() hash.Hash) func(string) 
 // ecdsaSign generates an ECDSA signature using the provided hash function
 func (j *JWT) ecdsaSign(hashFunc func() hash.Hash) func(string) (string, error) {
 	return func(data string) (string, error) {
-		hasher := hashFunc()
-		hasher.Write([]byte(data))
-		hashed := hasher.Sum(nil)
+		hashed := hashData(data, hashFunc)
 
 		r, s, err := ecdsa.Sign(rand.Reader, j.ecdsaPrivateKey, hashed)
 		if err != nil {
@@ -217,9 +220,7 @@ func (j *JWT) ecdsaSign(hashFunc func() hash.Hash) func(string) (string, error) 
 // pssSign generates an RSA-PSS signature using the provided hash function
 func (j *JWT) pssSign(hash crypto.Hash, hashFunc func() hash.Hash) func(string) (string, error) {
 	return func(data string) (string, error) {
-		hasher := hashFunc()
-		hasher.Write([]byte(data))
-		hashed := hasher.Sum(nil)
+		hashed := hashData(data, hashFunc)
 
 		signature, err := rsa.SignPSS(rand.Reader, j.rsaPrivateKey, hash, hashed, &rsa.PSSOptions{
 			SaltLength: rsa.PSSSaltLengthEqualsHash,
@@ -348,9 +349,7 @@ func (j *JWT) verifyRSA(hash crypto.Hash, hashFunc func() hash.Hash) func(string
 			return false, fmt.Errorf("invalid public key type")
 		}
 
-		hasher := hashFunc()
-		hasher.Write([]byte(data))
-		hashed := hasher.Sum(nil)
+		hashed := hashData(data, hashFunc)
 
 		signature, err := base64.RawURLEncoding.DecodeString(j.Signature)
 		if err != nil {
@@ -386,9 +385,7 @@ func (j *JWT) verifyECDSA(hashFunc func() hash.Hash) func(string, interface{}) (
 		r := new(big.Int).SetBytes(signature[:signatureLen/2])
 		s := new(big.Int).SetBytes(signature[signatureLen/2:])
 
-		hasher := hashFunc()
-		hasher.Write([]byte(data))
-		hashed := hasher.Sum(nil)
+		hashed := hashData(data, hashFunc)
 
 		verified := ecdsa.Verify(ecdsaPublicKey, hashed, r, s)
 		if !verified {
@@ -407,9 +404,7 @@ func (j *JWT) verifyPSS(hash crypto.Hash, hashFunc func() hash.Hash) func(string
 			return false, fmt.Errorf("invalid public key type")
 		}
 
-		hasher := hashFunc()
-		hasher.Write([]byte(data))
-		hashed := hasher.Sum(nil)
+		hashed := hashData(data, hashFunc)
 
 		signature, err := base64.RawURLEncoding.DecodeString(j.Signature)
 		if err != nil {
