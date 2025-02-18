@@ -11,8 +11,10 @@ import (
 	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"hash"
+	"math/big"
 	"strings"
 	"time"
 )
@@ -292,22 +294,135 @@ func ParseJWT(token string) (*JWT, error) {
 }
 
 // Verify verifies the JWT token signature
-func (j *JWT) Verify(token string) (bool, error) {
+func (j *JWT) Verify(token string, publicKey interface{}) (bool, error) {
 	parts := strings.Split(token, ".")
 	if len(parts) != 3 {
 		return false, fmt.Errorf("invalid token format")
 	}
 
 	dataToSign := fmt.Sprintf("%s.%s", parts[0], parts[1])
-	expectedSignature := parts[2]
+	j.Signature = parts[2]
 
-	signature, err := j.generateSignature(dataToSign)
-	if err != nil {
-		return false, fmt.Errorf("failed to generate signature: %w", err)
+	signatureFuncs := map[string]func(string, interface{}) (bool, error){
+		HS256: j.verifyHMAC(sha256.New),
+		HS384: j.verifyHMAC(sha512.New384),
+		HS512: j.verifyHMAC(sha512.New),
+		RS256: j.verifyRSA(crypto.SHA256, sha256.New),
+		RS384: j.verifyRSA(crypto.SHA384, sha512.New384),
+		RS512: j.verifyRSA(crypto.SHA512, sha512.New),
+		ES256: j.verifyECDSA(sha256.New),
+		ES384: j.verifyECDSA(sha512.New384),
+		ES512: j.verifyECDSA(sha512.New),
+		PS256: j.verifyPSS(crypto.SHA256, sha256.New),
+		PS384: j.verifyPSS(crypto.SHA384, sha512.New384),
+		PS512: j.verifyPSS(crypto.SHA512, sha512.New),
 	}
 
-	if subtle.ConstantTimeCompare([]byte(signature), []byte(expectedSignature)) == 1 {
+	verifyFunc, ok := signatureFuncs[j.Algorithm]
+	if !ok {
+		return false, fmt.Errorf("unsupported algorithm: %s", j.Algorithm)
+	}
+
+	return verifyFunc(dataToSign, publicKey)
+}
+
+// verifyHMAC verifies an HMAC signature using the provided hash function
+func (j *JWT) verifyHMAC(hashFunc func() hash.Hash) func(string, interface{}) (bool, error) {
+	return func(data string, _ interface{}) (bool, error) {
+		h := hmac.New(hashFunc, []byte(j.secretKey))
+		h.Write([]byte(data))
+		expectedSignature := Base64URLEncode(h.Sum(nil))
+
+		if subtle.ConstantTimeCompare([]byte(expectedSignature), []byte(j.Signature)) == 1 {
+			return true, nil
+		}
+		return false, fmt.Errorf("invalid signature")
+	}
+}
+
+// verifyRSA verifies an RSA signature using the provided hash function
+func (j *JWT) verifyRSA(hash crypto.Hash, hashFunc func() hash.Hash) func(string, interface{}) (bool, error) {
+	return func(data string, publicKey interface{}) (bool, error) {
+		rsaPublicKey, ok := publicKey.(*rsa.PublicKey)
+		if !ok {
+			return false, fmt.Errorf("invalid public key type")
+		}
+
+		hasher := hashFunc()
+		hasher.Write([]byte(data))
+		hashed := hasher.Sum(nil)
+
+		signature, err := base64.RawURLEncoding.DecodeString(j.Signature)
+		if err != nil {
+			return false, err
+		}
+
+		err = rsa.VerifyPKCS1v15(rsaPublicKey, hash, hashed, signature)
+		if err != nil {
+			return false, err
+		}
+
 		return true, nil
 	}
-	return false, fmt.Errorf("invalid signature")
+}
+
+// verifyECDSA verifies an ECDSA signature using the provided hash function
+func (j *JWT) verifyECDSA(hashFunc func() hash.Hash) func(string, interface{}) (bool, error) {
+	return func(data string, publicKey interface{}) (bool, error) {
+		ecdsaPublicKey, ok := publicKey.(*ecdsa.PublicKey)
+		if !ok {
+			return false, fmt.Errorf("invalid public key type")
+		}
+
+		signature, err := base64.RawURLEncoding.DecodeString(j.Signature)
+		if err != nil {
+			return false, err
+		}
+
+		signatureLen := len(signature)
+		if signatureLen%2 != 0 {
+			return false, errors.New("invalid signature length")
+		}
+		r := new(big.Int).SetBytes(signature[:signatureLen/2])
+		s := new(big.Int).SetBytes(signature[signatureLen/2:])
+
+		hasher := hashFunc()
+		hasher.Write([]byte(data))
+		hashed := hasher.Sum(nil)
+
+		verified := ecdsa.Verify(ecdsaPublicKey, hashed, r, s)
+		if !verified {
+			return false, errors.New("signature verification failed")
+		}
+
+		return true, nil
+	}
+}
+
+// verifyPSS verifies an RSA-PSS signature using the provided hash function
+func (j *JWT) verifyPSS(hash crypto.Hash, hashFunc func() hash.Hash) func(string, interface{}) (bool, error) {
+	return func(data string, publicKey interface{}) (bool, error) {
+		rsaPublicKey, ok := publicKey.(*rsa.PublicKey)
+		if !ok {
+			return false, fmt.Errorf("invalid public key type")
+		}
+
+		hasher := hashFunc()
+		hasher.Write([]byte(data))
+		hashed := hasher.Sum(nil)
+
+		signature, err := base64.RawURLEncoding.DecodeString(j.Signature)
+		if err != nil {
+			return false, err
+		}
+
+		err = rsa.VerifyPSS(rsaPublicKey, hash, hashed, signature, &rsa.PSSOptions{
+			SaltLength: rsa.PSSSaltLengthEqualsHash,
+		})
+		if err != nil {
+			return false, err
+		}
+
+		return true, nil
+	}
 }

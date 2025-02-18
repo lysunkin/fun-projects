@@ -16,6 +16,11 @@ func GenerateRSAPrivateKey(bits int) (*rsa.PrivateKey, error) {
 	return privateKey, nil
 }
 
+// GetRSAPublicKey retrieves the public key from the given RSA private key.
+func GetRSAPublicKey(privateKey *rsa.PrivateKey) *rsa.PublicKey {
+	return &privateKey.PublicKey
+}
+
 // GenerateECDSAPrivateKey generates a new ECDSA private key with the specified elliptic curve.
 func GenerateECDSAPrivateKey(c elliptic.Curve) (*ecdsa.PrivateKey, error) {
 	privateKey, err := ecdsa.GenerateKey(c, rand.Reader)
@@ -23,6 +28,11 @@ func GenerateECDSAPrivateKey(c elliptic.Curve) (*ecdsa.PrivateKey, error) {
 		return nil, err
 	}
 	return privateKey, nil
+}
+
+// GetECDSAPublicKey retrieves the public key from the given ECDSA private key.
+func GetECDSAPublicKey(privateKey *ecdsa.PrivateKey) *ecdsa.PublicKey {
+	return &privateKey.PublicKey
 }
 
 // GenerateECDSA256PrivateKey generates a new ECDSA private key using the P-256 curve.

@@ -7,13 +7,18 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+const (
+	secretKey  = "your-secret-key"
+	claimName  = "username"
+	claimValue = "John Doe"
+)
+
 func TestParseJWT(t *testing.T) {
 	tests := []struct {
 		name      string
 		token     string
 		wantErr   bool
 		wantAlg   string
-		wantTyp   string
 		wantClaim map[string]interface{}
 	}{
 		{
@@ -21,7 +26,6 @@ func TestParseJWT(t *testing.T) {
 			token:     "eyJhbGciOiAiSFMyNTYiLCAidHlwIjogIkpXVCJ9.eyJzdWIiOiAiMTIzNDU2Nzg5MCIsICJuYW1lIjogIkpvaG4gRG9lIiwgImlhdCI6IDE1MTYyMzkwMjJ9.4f4d5c6e7f8g9h0i1j2k3l4m5n6o7p8q9r0s1t2u3v4w5x6y7z8a9b0c1d2e3f4g",
 			wantErr:   false,
 			wantAlg:   HS256,
-			wantTyp:   "",
 			wantClaim: map[string]interface{}{"sub": "1234567890", "name": "John Doe", "iat": float64(1516239022)},
 		},
 		{
@@ -68,26 +72,21 @@ func TestParseJWT(t *testing.T) {
 }
 
 func TestEncodeJWT_HS(t *testing.T) {
-	const secretKey = "your-secret-key"
-	const claimName = "username"
-	const claimValue = "John Doe"
-
 	tests := []struct {
 		name      string
 		algorithm string
-		wantErr   bool
 	}{
 		{
 			name:      "Valid HS256",
-			algorithm: "HS256",
+			algorithm: HS256,
 		},
 		{
 			name:      "Valid HS384",
-			algorithm: "HS384",
+			algorithm: HS384,
 		},
 		{
 			name:      "Valid HS512",
-			algorithm: "HS512",
+			algorithm: HS512,
 		},
 	}
 
@@ -124,11 +123,11 @@ func TestEncodeJWT_HS(t *testing.T) {
 func TestHS256_E2E(t *testing.T) {
 	jwtHS256 := New(
 		WithAlgorithm(HS256),
-		WithSecretKey("your-secret-key"),
+		WithSecretKey(secretKey),
 		WithExpiry(time.Hour),
 	)
 
-	jwtHS256.SetClaim("username", "john_doe")
+	jwtHS256.SetClaim(claimName, claimValue)
 
 	tokenHS256, err := jwtHS256.Encode()
 	assert.NoError(t, err)
@@ -136,7 +135,7 @@ func TestHS256_E2E(t *testing.T) {
 	_, err = ParseJWT(tokenHS256)
 	assert.NoError(t, err)
 
-	_, err = jwtHS256.Verify(tokenHS256)
+	_, err = jwtHS256.Verify(tokenHS256, nil)
 	assert.NoError(t, err)
 }
 
@@ -150,7 +149,7 @@ func TestRS256_E2E(t *testing.T) {
 		WithExpiry(time.Hour),
 	)
 
-	jwtRS256.SetClaim("username", "john_doe")
+	jwtRS256.SetClaim(claimName, claimValue)
 
 	// Encode the token
 	tokenRS256, err := jwtRS256.Encode()
@@ -159,7 +158,7 @@ func TestRS256_E2E(t *testing.T) {
 	_, err = ParseJWT(tokenRS256)
 	assert.NoError(t, err)
 
-	_, err = jwtRS256.Verify(tokenRS256)
+	_, err = jwtRS256.Verify(tokenRS256, GetRSAPublicKey(privateKey))
 	assert.NoError(t, err)
 }
 
@@ -173,7 +172,7 @@ func TestES256_E2E(t *testing.T) {
 		WithExpiry(time.Hour),
 	)
 
-	jwtES256.SetClaim("username", "john_doe")
+	jwtES256.SetClaim(claimName, claimValue)
 
 	tokenES256, err := jwtES256.Encode()
 	assert.NoError(t, err)
@@ -181,9 +180,8 @@ func TestES256_E2E(t *testing.T) {
 	_, err = ParseJWT(tokenES256)
 	assert.NoError(t, err)
 
-	// TODO: fix ES verification
-	//_, err = jwtES256.Verify(tokenES256)
-	//assert.NoError(t, err)
+	_, err = jwtES256.Verify(tokenES256, GetECDSAPublicKey(privateKey))
+	assert.NoError(t, err)
 }
 
 func TestPS256_E2E(t *testing.T) {
@@ -196,7 +194,7 @@ func TestPS256_E2E(t *testing.T) {
 		WithExpiry(time.Hour),
 	)
 
-	jwtPS256.SetClaim("username", "john_doe")
+	jwtPS256.SetClaim(claimName, claimValue)
 
 	tokenPS256, err := jwtPS256.Encode()
 	assert.NoError(t, err)
@@ -204,7 +202,6 @@ func TestPS256_E2E(t *testing.T) {
 	_, err = ParseJWT(tokenPS256)
 	assert.NoError(t, err)
 
-	// TODO: fix PS verification
-	//_, err = jwtPS256.Verify(tokenPS256)
-	//assert.NoError(t, err)
+	_, err = jwtPS256.Verify(tokenPS256, GetRSAPublicKey(privateKey))
+	assert.NoError(t, err)
 }

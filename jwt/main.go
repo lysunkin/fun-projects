@@ -34,7 +34,7 @@ func main() {
 	}
 	fmt.Printf("Decoded Token: %+v\n", token)
 
-	ok, err := jwtHS256.Verify(tokenHS256)
+	ok, err := jwtHS256.Verify(tokenHS256, nil)
 	if err != nil {
 		fmt.Println("Error verifying token:", err)
 	}
@@ -74,7 +74,7 @@ func main() {
 	}
 	fmt.Printf("Decoded Token: %+v\n", token)
 
-	ok, err = jwtRS256.Verify(tokenRS256)
+	ok, err = jwtRS256.Verify(tokenRS256, jwt.GetRSAPublicKey(privateKey))
 	if err != nil {
 		fmt.Println("Error verifying token:", err)
 	}
@@ -114,8 +114,7 @@ func main() {
 	}
 	fmt.Printf("Decoded Token: %+v\n", token)
 
-	// TODO: fix ES verification
-	ok, err = jwtES256.Verify(tokenES256)
+	ok, err = jwtES256.Verify(tokenES256, jwt.GetECDSAPublicKey(esPrivateKey))
 	if err != nil {
 		fmt.Println("Error verifying token:", err)
 	}
@@ -149,8 +148,7 @@ func main() {
 	}
 	fmt.Printf("Decoded Token: %+v\n", token)
 
-	// TODO: fix PS verification
-	ok, err = jwtPS256.Verify(tokenPS256)
+	ok, err = jwtPS256.Verify(tokenPS256, jwt.GetRSAPublicKey(privateKey))
 	if err != nil {
 		fmt.Println("Error verifying token:", err)
 	}
