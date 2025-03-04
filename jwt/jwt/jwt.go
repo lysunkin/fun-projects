@@ -104,6 +104,14 @@ func WithECDSAKey(privateKey *ecdsa.PrivateKey) JWTOption {
 	}
 }
 
+func WithPayload(payload map[string]interface{}) JWTOption {
+	return func(j *JWT) {
+		for k, v := range payload {
+			j.Payload[k] = v
+		}
+	}
+}
+
 // New creates a new JWT instance with the provided options
 func New(opts ...JWTOption) *JWT {
 	const defaultAlgorithm = HS256

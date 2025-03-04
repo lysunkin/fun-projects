@@ -127,6 +127,10 @@ func main() {
 		jwt.WithAlgorithm(jwt.PS256),
 		jwt.WithRSAKey(privateKey),
 		jwt.WithExpiry(time.Hour),
+		jwt.WithPayload(map[string]interface{}{
+			"field1": "value1",
+			"field2": "value2",
+		}),
 	)
 
 	// Set claims
